@@ -1,0 +1,300 @@
+{
+  "version": "1.0",
+  "created": "2026-05-26",
+  "description": "BoomBrand brand intelligence framework — derived from analyzing 10 brands across 6 archetypes. This is the knowledge base that powers voice discovery, scoring, and auditing.",
+
+  "core_finding": "POV (point of view) is the single strongest predictor of voice quality. Every brand scoring A or A+ has a sharp, controversial belief about their category. Every brand scoring C or below has a diluted or absent POV. Without POV, voice is just style — easily copied, never owned.",
+
+  "voice_interchange_format": {
+    "version": "1.0",
+    "description": "Standard schema for passing brand voice between AI systems. Any tool consuming this format can write in the brand voice without additional context.",
+    "required_fields": ["id","name","type","emoji","tagline","pov","what_we_are_not","tone_default","sentence_style","signature_moves","banned_words","banned_openers","system_prompt"],
+    "recommended_fields": ["market","audiences","products","rules","quality_tests","consistency","archetype","enemy","aspiration_brands"],
+    "new_brand_fields": ["aspiration_brands","enemy","origin_story","founder_voice","permission_slip"],
+    "pivot_fields": ["from_voice","to_voice","what_stays","what_retires","transition_rules"],
+    "system_prompt_spec": {
+      "length_words": "280-320",
+      "must_lead_with": "Category POV — not product description",
+      "must_include": ["POV statement","default register","2-3 signature move examples","banned words with reasoning","one good vs bad writing example"],
+      "must_not_include": ["generic instructions any brand could use","the word 'authentic'","style advice that sounds like copywriting 101","anything a competitor could use unchanged"],
+      "validation": "If it could appear in any brand's style guide unchanged — rewrite it"
+    }
+  },
+
+  "scoring_rubric": {
+    "description": "Four dimensions, 25 points each, total 100. Apply to any brand voice.",
+    "dimensions": {
+      "pov_strength": {
+        "weight": 25,
+        "description": "How sharp, specific, and controversial is the brand's point of view?",
+        "scores": {
+          "25": "Controversial, specific belief that would make some people disagree. Nobody else in the category says this.",
+          "15": "Clear perspective but safe. True, but not surprising.",
+          "5": "Mission statement dressed as POV. Aspirational but toothless.",
+          "0": "No discernible POV. Could be anyone."
+        },
+        "test": "Would a competitor be uncomfortable if you said this about their category? If no — score lower."
+      },
+      "vocabulary_ownership": {
+        "weight": 25,
+        "description": "How many words and phrases does this brand genuinely own?",
+        "scores": {
+          "25": "3+ words/phrases uniquely associated with this brand. Customers use them without prompting.",
+          "15": "Some distinctive vocabulary but significant category bleed.",
+          "5": "Mostly category vocabulary. Few owned terms.",
+          "0": "Indistinguishable from category average."
+        },
+        "test": "Read 10 sentences with brand name removed. Can you tell who wrote it? If no — score lower."
+      },
+      "signature_moves": {
+        "weight": 25,
+        "description": "Are there specific, teachable rhetorical patterns unique to this brand?",
+        "scores": {
+          "25": "2+ named, teachable patterns. A new writer can learn and replicate them.",
+          "15": "Consistent style but patterns not distinct enough to name.",
+          "5": "Some style consistency. Not distinctive.",
+          "0": "No recognizable patterns. Random variation."
+        },
+        "test": "Can you name a rhetorical move and give an example of it? If no — score lower.",
+        "examples": {
+          "Oatly": "Self-interruption to undercut own claim",
+          "Linear": "Constraint framed as feature",
+          "Duolingo": "Consequence delivered as warmth",
+          "Basecamp": "Naming the thing everyone thinks but won't say"
+        }
+      },
+      "consistency": {
+        "weight": 25,
+        "description": "Does the voice hold across channels, registers, and time?",
+        "sub_dimensions": {
+          "cross_channel": "Pricing page = blog = job listings = support docs = social",
+          "cross_register": "Shifting from punchy to authoritative still sounds like same brand",
+          "temporal": "Voice held over 2+ years without committee dilution",
+          "actions_match_voice": "Business decisions back up what the voice claims"
+        },
+        "scores": {
+          "25": "Same voice everywhere, always. Actions match claims. Has held for years.",
+          "15": "Consistent in marketing. Breaks down in product/support/hiring content.",
+          "5": "Voice exists in some content. Absent in others. Inconsistent over time.",
+          "0": "Different voice in every context. No through-line."
+        },
+        "test": "Compare homepage copy to a job listing to a support doc. Same brand? If no — score lower."
+      }
+    }
+  },
+
+  "grade_definitions": {
+    "A_plus": {
+      "score_range": "90-100",
+      "pattern": "Sharp POV + total commitment + specific vocabulary ownership + actions match voice",
+      "examples": ["Oatly","Liquid Death","Duolingo"],
+      "characteristics": ["Would make some people uncomfortable","Category-defining vocabulary","Signature moves teachable to any writer","Business model backs up the voice claims"]
+    },
+    "A": {
+      "score_range": "80-89",
+      "pattern": "Clear POV + strong voice + minimal category vocabulary leakage",
+      "examples": ["Linear","Basecamp","Patagonia"],
+      "characteristics": ["POV clear enough to polarize slightly","Consistent across most channels","Some category vocabulary but mostly owned"]
+    },
+    "B": {
+      "score_range": "65-79",
+      "pattern": "POV exists but safe + good style + some category vocabulary",
+      "examples": ["Stripe","Mailchimp original"],
+      "characteristics": ["Perspective clear but won't make anyone uncomfortable","Voice consistent in marketing, variable elsewhere","Clear style but patterns not fully teachable"]
+    },
+    "C": {
+      "score_range": "45-64",
+      "pattern": "POV diluted + inconsistent channels + significant category vocabulary",
+      "examples": ["HubSpot current","Notion","Mailchimp post-acquisition"],
+      "characteristics": ["POV exists in founding content, averaged out in current","Voice breaks down in product and support content","Uses category vocabulary as default"]
+    },
+    "D_F": {
+      "score_range": "0-44",
+      "pattern": "No POV + committee writing + all category vocabulary + banned openers",
+      "examples": ["Most enterprise SaaS","Legacy brands in digital transformation"],
+      "characteristics": ["Could be any brand in the category","Opens with 'In today's landscape'","Features as voice rather than POV as voice","Different writer every piece"]
+    }
+  },
+
+  "brand_archetypes": {
+    "category_challenger": {
+      "description": "Exists to fight a category convention. The enemy IS the category.",
+      "examples": ["Oatly","Liquid Death","Basecamp"],
+      "key_signals": ["adversarial_framing","self_aware_copy","fourth_wall_breaks","enemy_explicit"],
+      "voice_trap": "Becoming the thing you're fighting as you scale",
+      "pov_pattern": "The [category] has been [doing wrong thing] for [time]. We exist to prove that's not necessary."
+    },
+    "opinionated_tool": {
+      "description": "Has strong beliefs about how work should be done. Constraint is the product.",
+      "examples": ["Linear","Stripe","37signals"],
+      "key_signals": ["philosophy_in_features","constraint_as_feature","implicit_comparison","no_fluff"],
+      "voice_trap": "Arrogance without the product quality to back it up",
+      "pov_pattern": "Most [tools] are designed for [wrong person]. We designed for [right person] and that changes everything."
+    },
+    "character_driven": {
+      "description": "The brand IS a character. Voice and character are inseparable.",
+      "examples": ["Duolingo","Liquid Death","Oatly"],
+      "key_signals": ["character_consistency","bit_commitment","meme_integration","never_breaks_character"],
+      "voice_trap": "Character getting stale or inconsistently applied across channels",
+      "pov_pattern": "[Category] doesn't have to be [boring thing]. We're proof."
+    },
+    "mission_led": {
+      "description": "The cause IS the product. Business model backs up the belief.",
+      "examples": ["Patagonia","Basecamp"],
+      "key_signals": ["action_voice_alignment","supply_chain_storytelling","product_secondary","uncomfortable_truths"],
+      "voice_trap": "Preachiness — saying you care more than showing you care",
+      "pov_pattern": "[Industry] has optimized for [wrong thing]. We've built our entire business around [right thing] instead."
+    },
+    "community_brand": {
+      "description": "User voice IS brand voice. Community language colonizes the brand.",
+      "examples": ["Notion","Duolingo"],
+      "key_signals": ["user_voice_integration","open_ended_positioning","capability_not_use_case"],
+      "voice_trap": "Brand coherence problem — no single person can articulate what the brand sounds like",
+      "pov_pattern": "We're not going to tell you how to use this. Here's what it can do."
+    },
+    "committee_brand": {
+      "description": "Voice averaged across too many writers. POV diluted by scale.",
+      "examples": ["HubSpot current","Mailchimp post-acquisition"],
+      "key_signals": ["pov_dilution","channel_inconsistency","category_vocabulary_default","safe_language"],
+      "voice_trap": "Mistaking volume for voice — more content makes the problem worse",
+      "fix": "Identify the 3-5 pieces of content that still have POV. Extract the editorial rules. Apply them as the new standard."
+    }
+  },
+
+  "discovery_modes": {
+    "established_brand": {
+      "trigger": "Has URL + has brand footprint (reviews, press, social presence)",
+      "research_focus": "What does the internet say vs what they say about themselves",
+      "conversation_arc": "Excavate and codify what already exists",
+      "output_type": "Descriptive — here is your voice, made official",
+      "key_question": "What do your best customers say about you that your website doesn't?"
+    },
+    "new_brand": {
+      "trigger": "Has URL + little or no footprint (fewer than 3 Reddit mentions, no G2 profile)",
+      "research_focus": "Category white space + founder DNA + competitor voice audit",
+      "conversation_arc": "Origin mining + aspiration + enemy identification + permission slip",
+      "output_type": "Prescriptive — here is the voice you should grow into",
+      "key_question": "If you knew no investors were watching — how would you actually describe what you're building?",
+      "special_tools": ["three_brand_cocktail","enemy_identification","permission_slip","founder_voice_extraction"]
+    },
+    "pivot_brand": {
+      "trigger": "Established brand explicitly wanting to change voice",
+      "research_focus": "Old voice audit + what equity to preserve + gap to goal state",
+      "conversation_arc": "What happened → where are you going → what stays → transition map",
+      "output_type": "Transitional — from/to voice map with transition rules",
+      "key_question": "What's the one thing a loyal customer would notice if it disappeared — and feel betrayed?",
+      "pivot_triggers": {
+        "repositioning": "Moving upmarket, downmarket, or new segment",
+        "reputation_reset": "Crisis, bad press, category association problems",
+        "growth_maturation": "Outgrown the scrappy voice, risk of overcorrecting to corporate",
+        "acquisition_merger": "Two cultures colliding, negotiating what survives",
+        "founder_departure": "The voice was a person, now needs to be a system"
+      },
+      "what_stays_question": "If I were a loyal customer watching your rebrand — what would make me feel betrayed if it disappeared?",
+      "transition_output": {
+        "from_voice": "Current voice profile",
+        "to_voice": "Target voice profile",
+        "what_stays": "Non-negotiable equity",
+        "what_retires": "With grace, not erasure",
+        "transition_rules": "How to walk from one to other over 90 days"
+      }
+    },
+    "blank_slate": {
+      "trigger": "No URL or domain. Building from nothing.",
+      "research_focus": "Category voice audit + competitor analysis + white space mapping",
+      "conversation_arc": "Enemy first → three-brand cocktail → founder voice → category gap",
+      "output_type": "Aspirational — here is who you could be",
+      "key_question": "What's the thing that happens in your industry that makes you actually angry? Not strategically frustrated — actually angry?",
+      "note": "The anger is the voice. The enemy is the POV. Start here."
+    }
+  },
+
+  "research_protocol": {
+    "footprint_detection": {
+      "established_signals": ["G2 or Capterra profile exists","3+ Reddit threads mentioning brand","Wikipedia page","100+ Google results","Press coverage in last 12 months"],
+      "new_brand_signals": ["Domain registered less than 2 years","Fewer than 3 Reddit mentions","No review platform profile","Fewer than 100 Google results","No Wikipedia page"]
+    },
+    "universal_searches": [
+      {"search": "[brand] reviews", "looking_for": "Customer vocabulary, recurring complaints, recurring praise"},
+      {"search": "[brand] site:reddit.com", "looking_for": "Unfiltered sentiment, insider language, memes, how community talks about brand"},
+      {"search": "[brand] vs", "looking_for": "How positioned against competitors, what competitors claim they lack"},
+      {"search": "what is [brand]", "looking_for": "AI perception, neutral source description, how explained to outsiders"},
+      {"search": "[brand] alternatives", "looking_for": "Why people leave, what they're looking for instead"},
+      {"search": "[brand] site:linkedin.com", "looking_for": "Employee language, cultural signals, how team describes company"},
+      {"search": "scrape [brand domain]", "looking_for": "Own vocabulary, what they lead with, what they bury, what they avoid"}
+    ],
+    "category_specific_sources": {
+      "software_saas": ["G2","Capterra","ProductHunt","Hacker News","tech subreddits"],
+      "consumer_brand": ["Amazon reviews","Yelp","TikTok comments","Instagram comments","consumer subreddits"],
+      "food_beverage": ["grocery community forums","nutrition subreddits","Yelp","DTC community forums"],
+      "b2b_services": ["Clutch","LinkedIn","industry publications","Trustpilot"],
+      "fashion_retail": ["Reddit fashion communities","Trustpilot","Instagram","style blogs"],
+      "healthcare": ["Healthgrades","medical subreddits (careful)","patient community forums"],
+      "agency": ["Clutch","LinkedIn","industry award listings"]
+    },
+    "extraction_goals": {
+      "customer_vocabulary": "Exact words customers use that the brand doesn't — these are gold",
+      "category_vocabulary": "Words all competitors use — this brand should own different words",
+      "surprise_findings": "Things that contradict what the brand says about itself",
+      "voice_consistency_signals": "Does the brand sound the same everywhere or does it shift?",
+      "pov_signals": "Does the brand have a take? Or do they just describe features?"
+    }
+  },
+
+  "conversation_techniques": {
+    "educated_guess": {
+      "description": "AI proposes based on research, user corrects. Faster and more revealing than asking from scratch.",
+      "format": "I found X — is that right, or is there more to it?",
+      "example": "Your main competitors look like Salesforce, Pipedrive, and Zoho. Who am I missing, and which one actually keeps you up at night?"
+    },
+    "three_brand_cocktail": {
+      "description": "Name three brands in any category whose voice you'd mix together.",
+      "why": "More accurate than adjectives. Faster than long descriptions.",
+      "example": "Patagonia's conviction + Linear's precision + Oatly's willingness to be weird = complete voice brief in one sentence"
+    },
+    "enemy_identification": {
+      "description": "Every strong brand has an enemy — a belief or behavior they exist to fight.",
+      "question": "What's the thing that happens in your industry that makes you actually angry? Not strategically frustrated — actually angry?",
+      "why": "The anger is the voice. The enemy is the POV."
+    },
+    "permission_slip": {
+      "description": "Give founders permission to sound like themselves before they self-censor.",
+      "question": "If you knew no investors were watching — no customers, no press — how would you actually describe what you're building?",
+      "why": "Most founders' unguarded answer is their best copy"
+    },
+    "anti_voice": {
+      "description": "The anti-voice is easier to articulate than the voice itself.",
+      "question": "What's the most embarrassing thing you could imagine your brand saying?",
+      "why": "Specific anti-examples are more useful than aspirational adjectives"
+    },
+    "what_stays": {
+      "description": "For pivot brands — identifying non-negotiable equity.",
+      "question": "If I were a loyal customer watching your rebrand — what would make me feel betrayed if it disappeared?",
+      "why": "Most rebrands fail by throwing away equity. This surfaces it."
+    },
+    "the_one_thing": {
+      "description": "Final question in every discovery conversation.",
+      "question": "What's the thing your best customers understand about you that no amount of research would tell me?",
+      "why": "Research gets you 70%. This question gets the rest."
+    }
+  },
+
+  "validation_rules": {
+    "pov_test": "Does the POV contain a claim someone could reasonably disagree with? If it starts with 'We believe in...' or could appear on any competitor site — fail, regenerate.",
+    "specificity_test": "Minimum 6 words in reach_for. Minimum 6 words in never_use. Banned openers must name specific phrases not categories. Signature moves must be named with examples.",
+    "system_prompt_test": "280-320 words. Leads with POV not product description. Contains good vs bad example. Does not contain the word 'authentic'. Does not contain generic copywriting advice.",
+    "consistency_check": "Would this voice sound the same on a pricing page, a job listing, and a support document? If not — the voice isn't defined clearly enough.",
+    "competitor_test": "Could a direct competitor use this system prompt unchanged? If yes — it's not specific enough."
+  },
+
+  "key_insights": {
+    "pov_is_everything": "POV is the single strongest predictor of voice quality. Without it voice is just style — easily copied, never owned.",
+    "anti_identity_matters": "Every high-scoring brand has sharp edges — they define who they are NOT as clearly as who they are.",
+    "actions_match_words": "The strongest voices are backed by business decisions. Patagonia's repair program. Basecamp's flat structure. Without this, voice is just marketing.",
+    "consistency_multiplier": "A great voice with poor consistency scores lower than a good voice with perfect consistency. Inconsistency destroys trust.",
+    "committee_brand_trap": "When too many people write for a brand with no strong editorial voice, the output sounds like nobody. Volume makes it worse.",
+    "category_vocabulary_is_contagious": "Every brand analyzed used competitor words somewhere. The blocklist is the defense.",
+    "founder_voice_is_the_seed": "For new brands, the founder's unguarded voice is almost always better than anything a strategist would design. Extract it before they edit it.",
+    "enemy_unlocks_pov": "Brands that can name their enemy have better POV than brands that can only name their mission. The anger is more honest than the aspiration."
+  }
+}
