@@ -252,13 +252,16 @@ Add "voice_id" field with value: "${voiceProfile.id}"`;
 // ── URL FETCHER ─────────────────────────────────────────────────────────────
 async function fetchUrlContent(url) {
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
     const response = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; BoomScore/1.0)",
         "Accept": "text/html,application/xhtml+xml",
       },
-      signal: AbortSignal.timeout(10000),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const html = await response.text();
 
