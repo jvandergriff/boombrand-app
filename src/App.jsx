@@ -387,9 +387,9 @@ function TypePicker({ onPick, onCancel, prefilledType = null, prefilledUrl = nul
   const [error, setError] = useState("");
   const [loadingStep, setLoadingStep] = useState(0);
 
-  // Auto-skip type selection for non-brand prefilled types
+  // Auto-skip type selection for founder/custom — brand and product go to URL step
   useEffect(() => {
-    if (prefilledType && prefilledType !== "brand") {
+    if (prefilledType && prefilledType !== "brand" && prefilledType !== "product") {
       onPick(prefilledType, null);
     }
   }, []);
@@ -411,8 +411,8 @@ function TypePicker({ onPick, onCancel, prefilledType = null, prefilledUrl = nul
 
   const handleTypeSelect = (type) => {
     setSelectedType(type);
-    if (type === "brand") setStep("url");
-    else onPick(type, null);
+    if (type === "brand" || type === "product") setStep("url");
+    else onPick(type, null); // founder goes straight to conversation
   };
 
   const handleURLSubmit = async (skip = false) => {
@@ -421,7 +421,10 @@ function TypePicker({ onPick, onCancel, prefilledType = null, prefilledUrl = nul
     try {
       const domain = url.replace(/https?:\/\/(www\.)?/, "").split("/")[0];
       const text = await callAPI(
-        [{ role: "user", content: `Research this brand: ${url.startsWith("http") ? url : "https://" + url}\nDomain: ${domain}\nSearch for: "${domain} reviews", "${domain} site:reddit.com", "${domain} vs competitors", "what is ${domain}". Then return the JSON brand intelligence report.` }],
+        [{ role: "user", content: selectedType === "product"
+            ? `Research this product: ${url.startsWith("http") ? url : "https://" + url}\nDomain: ${domain}\nSearch for: "${domain} features", "${domain} vs competitors", "${domain} pricing", "${domain} reviews", "${domain} alternatives". Scrape the features page if possible. Focus on: what it does at mechanic level, competitors, customer language, what it replaces. Return the JSON brand intelligence report.`
+            : `Research this brand: ${url.startsWith("http") ? url : "https://" + url}\nDomain: ${domain}\nSearch for: "${domain} reviews", "${domain} site:reddit.com", "${domain} vs competitors", "what is ${domain}". Then return the JSON brand intelligence report.`
+        }],
         BRAND_RESEARCH_SYSTEM, 1500, true
       );
       // Extract JSON even if model adds text around it
@@ -1531,8 +1534,8 @@ export default function App() {
     setResearch(null);
     setResourceData(null);
 
-    if (type === "brand" && url) {
-      // Go straight to research with URL pre-filled
+    if ((type === "brand" || type === "product") && url) {
+      // Go straight to URL step with pre-filled URL
       setPrefilledUrl(url);
       setView("discover");
     } else if (type === "custom") {
@@ -1603,7 +1606,7 @@ export default function App() {
   };
 
   if (view === "discover") return <TypePicker onPick={(type, res) => { setPickedType(type); setResearch(res); setView(res ? "report" : "chat"); }} onCancel={()=>setView("dashboard")} prefilledType={pickedType} prefilledUrl={prefilledUrl} onClearPrefill={()=>setPrefilledUrl(null)}/>;
-  if (view === "report" && research) return <ResearchReport research={research} onContinue={()=>setView(pickedType==="brand" ? "resources" : "chat")}/>;
+  if (view === "report" && research) return <ResearchReport research={research} onContinue={()=>setView((pickedType==="brand" || pickedType==="product") ? "resources" : "chat")}/>;
   if (view === "resources") return <ResourceUpload research={research} onContinue={(data)=>{ setResourceData(data); setView("chat"); }} onSkip={()=>setView("chat")}/>;
   if (view === "chat") return <VoiceDiscovery onVoiceSaved={handleSaved} onCancel={()=>setView("dashboard")} voiceType={pickedType} brandResearch={research} resourceData={resourceData} customPrompt={customPrompt}/>;
   if (view === "editor" && editing) return <VoiceEditor voice={editing} onUpdate={handleUpdate} onBack={()=>setView("dashboard")}/>;
