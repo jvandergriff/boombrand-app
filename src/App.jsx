@@ -3,7 +3,6 @@ import {
   BoomScoreEntry,
   BoomScoreLoading,
   BoomScoreResults,
-  ScoreHistoryCard,
   loadScoreHistory,
   saveScoreHistory,
 } from "./BoomScore";
@@ -27,12 +26,13 @@ const TYPE_META = {
 const EMOJIS = ["🧭","🚀","⚡","🎯","🔥","💡","🌟","🎨","🦁","🐯","🦊","🎸","🎤","🏆","💎","🌈","🍀","🔮","🎭","🦋","🌊","🏔","🌺","🐉","👑","✨","💫","⭐","🌙","🎪"];
 
 // ── AI PROMPTS ────────────────────────────────────────────────────────────────
-const INTERVIEWER_SYSTEM = `You are BoomBrand's voice discovery AI. Your job is to have a natural, adaptive conversation that reveals someone's authentic brand or personal voice — not ask them to describe it.
+const INTERVIEWER_SYSTEM = `You are BoomBrand's voice discovery AI. Your job is to have a sharp, direct conversation that reveals someone's authentic brand voice — not ask them to describe it.
 
 CONVERSATION RULES:
 - Ask ONE question at a time. Never multiple questions.
-- Each question must build directly on what they just said. Reference their specific words.
-- Don't use corporate language. Be warm, curious, direct.
+- Open directly with the question. No "Hey!", no "Thanks for doing this", no warm-up. Just the question.
+- Plain text only. No markdown — no **bold**, no *italics*, no bullet points. Ever.
+- Each question must reference your research findings or their specific words.
 - After 5-7 exchanges, respond with exactly this JSON (no markdown fences, no other text): {"done": true, "exchanges": <number>}
 
 ADAPTIVE QUESTION LOGIC:
@@ -62,38 +62,25 @@ Output ONLY valid JSON, no markdown fences, no explanation:
   "system_prompt": "200-250 word system prompt for AI tools to write in this voice — specific, grounded in observed patterns"
 }`;
 
-const BRAND_RESEARCH_SYSTEM = `You are BoomBrand's brand intelligence engine. Given a brand's URL, research them thoroughly using web_search and return surprising insights.
+const BRAND_RESEARCH_SYSTEM = `You are a JSON API. Your response must start with { and end with }. No other text before or after. No markdown. No explanation. Just the JSON object.
 
-Use web_search to find:
-1. Brand name + "reviews" — customer sentiment on G2, Captorate, Trustpilot, Reddit
-2. Brand name + site:reddit.com — unfiltered real talk
-3. Brand name + "vs" — how they're compared to competitors
-4. "what is [brand]" — AI perception
-5. Brand name + competitors in their space
+Use web_search to research the brand. Search for:
+1. "[brand] reviews"
+2. "[brand] site:reddit.com" 
+3. "[brand] vs"
+4. "what is [brand]"
+5. "[brand] competitors"
 
-Return ONLY valid JSON, no markdown:
-{
-  "brand_name": "detected name",
-  "category": "their industry/category",
-  "what_they_say": "how they describe themselves in 1-2 sentences",
-  "what_others_say": "how customers/internet describes them — should differ from above",
-  "voice_score": <0-100>,
-  "voice_grade": "A/B/C/D/F",
-  "surprises": [
-    { "icon": "emoji", "title": "short finding", "insight": "2-3 specific sentences with real sources/quotes", "opportunity": "1 sentence on what to do with this" }
-  ],
-  "vocabulary": {
-    "they_own": ["words distinctively theirs"],
-    "competitors_own": ["words competitors use they should avoid"],
-    "customers_use": ["words customers use that the brand doesn't"]
-  },
-  "voice_gaps": ["3-4 specific gaps between how they present vs how they're perceived"],
-  "first_question": "the single sharpest question to open the voice discovery conversation, informed by what you found"
-}`;
+Your entire response must be this JSON object and nothing else:
+{"brand_name":"string","category":"string","what_they_say":"string","what_others_say":"string","voice_score":0,"voice_grade":"C","surprises":[{"icon":"emoji","title":"string","insight":"string","opportunity":"string"}],"vocabulary":{"they_own":["string"],"competitors_own":["string"],"customers_use":["string"]},"voice_gaps":["string"],"first_question":"string"}
+
+Fill in real values from your research. Start your response with { immediately.`;
 
 // ── API CALL ──────────────────────────────────────────────────────────────────
 async function callAPI(messages, system, maxTokens = 400, useSearch = false) {
-  const body = { model: "claude-haiku-4-5-20251001", max_tokens: maxTokens, system, messages };
+  // Web search requires Sonnet — Haiku doesn't support it
+  const model = useSearch ? "claude-sonnet-4-5-20250929" : "claude-haiku-4-5-20251001";
+  const body = { model, max_tokens: maxTokens, system, messages };
   if (useSearch) body.tools = [{ type: "web_search_20250305", name: "web_search" }];
   const res = await fetch("/api/chat", {
     method: "POST",
@@ -207,11 +194,11 @@ function VoiceReveal({ profile, onSave, onRetry }) {
           boxShadow:"0 4px 40px rgba(124,92,252,0.08)", opacity:show?1:0,
           transform:show?"none":"translateY(20px)", transition:"all 0.5s ease 0.3s" }}>
           <div style={{ display:"flex", borderBottom:"1px solid #F0EEFF", padding:"0 6px" }}>
-            {[{id:"character",label:"Character"},{id:"vocabulary",label:"Vocabulary"},{id:"prompt",label:"System Prompt"}].map(t=>(
-              <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"14px 20px", border:"none",
-                background:"transparent", fontFamily:"'Poppins',sans-serif", fontSize:13, fontWeight:600,
+            {[{id:"character",label:"Character"},{id:"vocabulary",label:"Vocabulary"},{id:"prompt",label:"System Prompt"},{id:"sources",label:"Sources"}].map(t=>(
+              <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"12px 16px", border:"none",
+                background:"transparent", fontFamily:"'Poppins',sans-serif", fontSize:12, fontWeight:600,
                 cursor:"pointer", color:tab===t.id?"#7C5CFC":"#9CA3AF",
-                borderBottom:`2.5px solid ${tab===t.id?"#7C5CFC":"transparent"}`, transition:"all 0.15s" }}>{t.label}</button>
+                borderBottom:`2.5px solid ${tab===t.id?"#7C5CFC":"transparent"}`, transition:"all 0.15s", whiteSpace:"nowrap" }}>{t.label}</button>
             ))}
           </div>
           <div style={{ padding:28 }}>
@@ -289,6 +276,83 @@ function VoiceReveal({ profile, onSave, onRetry }) {
                   wordBreak:"break-word", maxHeight:280, overflow:"auto" }}>{profile.system_prompt}</pre>
               </div>
             </div>}
+
+            {tab==="sources" && <div style={{ animation:"slideUp 0.2s ease" }}>
+              {/* Research report */}
+              <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, letterSpacing:"0.1em",
+                textTransform:"uppercase", color:"#9CA3AF", marginBottom:12 }}>Research Report</div>
+              {profile._research ? (
+                <div style={{ marginBottom:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+                    <div style={{ padding:"12px 14px", background:"#FAFBFF", border:"1px solid #EDE8FF", borderRadius:10 }}>
+                      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:"#9CA3AF", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>What you said</div>
+                      <p style={{ fontSize:12, color:"#6B7280", lineHeight:1.6, fontStyle:"italic" }}>"{profile._research.what_they_say}"</p>
+                    </div>
+                    <div style={{ padding:"12px 14px", background:"#F0EBFF", border:"1px solid #DDD6FE", borderRadius:10 }}>
+                      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:"#7C5CFC", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6, opacity:0.8 }}>What internet said</div>
+                      <p style={{ fontSize:12, color:"#4C1D95", lineHeight:1.6, fontStyle:"italic" }}>"{profile._research.what_others_say}"</p>
+                    </div>
+                  </div>
+                  {profile._research.surprises?.length > 0 && (
+                    <div style={{ padding:"12px 14px", background:"white", border:"1px solid #EDE8FF", borderRadius:10 }}>
+                      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:"#9CA3AF", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:10 }}>Surprising Findings</div>
+                      {profile._research.surprises.map((s,i) => (
+                        <div key={i} style={{ display:"flex", gap:8, marginBottom:8 }}>
+                          <span style={{ fontSize:16, flexShrink:0 }}>{s.icon}</span>
+                          <div>
+                            <div style={{ fontWeight:600, fontSize:13, color:"#1A1A2E", marginBottom:2 }}>{s.title}</div>
+                            <p style={{ fontSize:12, color:"#6B7280", lineHeight:1.55 }}>{s.insight}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ padding:"14px", background:"#FAFBFF", border:"1px dashed #EDE8FF", borderRadius:10, marginBottom:20, textAlign:"center" }}>
+                  <p style={{ fontSize:13, color:"#C4B5FD" }}>No research report — this voice was created without URL research.</p>
+                </div>
+              )}
+
+              {/* Resources */}
+              <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, letterSpacing:"0.1em",
+                textTransform:"uppercase", color:"#9CA3AF", marginBottom:12 }}>Resources Provided</div>
+              {profile._resources ? (
+                <div>
+                  {profile._resources.key_findings?.length > 0 && (
+                    <div style={{ padding:"12px 14px", background:"white", border:"1px solid #EDE8FF", borderRadius:10, marginBottom:10 }}>
+                      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:"#9CA3AF", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>Key Findings from Resources</div>
+                      {profile._resources.key_findings.map((f,i) => (
+                        <div key={i} style={{ display:"flex", gap:8, marginBottom:5 }}>
+                          <span style={{ color:"#7C5CFC", flexShrink:0 }}>→</span>
+                          <p style={{ fontSize:12, color:"#374151", lineHeight:1.55 }}>{f}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {profile._resources.items?.length > 0 && (
+                    <div style={{ padding:"12px 14px", background:"white", border:"1px solid #EDE8FF", borderRadius:10 }}>
+                      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:"#9CA3AF", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:10 }}>Documents Used</div>
+                      {profile._resources.items.map((item,i) => (
+                        <div key={i} style={{ display:"flex", gap:10, padding:"8px 0", borderBottom: i < profile._resources.items.length-1 ? "1px solid #F0EEFF" : "none" }}>
+                          <span style={{ fontSize:16, flexShrink:0 }}>
+                            {item.type==="link"?"🔗":item.type==="pitch_deck"?"📊":item.type==="case_study"?"📋":item.type==="sales_script"?"💬":item.type==="customer_words"?"💛":"📄"}
+                          </span>
+                          <div>
+                            <div style={{ fontWeight:600, fontSize:12, color:"#1A1A2E", marginBottom:2, textTransform:"capitalize" }}>{item.type.replace(/_/g," ")}</div>
+                            <p style={{ fontSize:11, color:"#9CA3AF", lineHeight:1.4 }}>{item.value.slice(0,100)}{item.value.length>100?"...":""}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ padding:"14px", background:"#FAFBFF", border:"1px dashed #EDE8FF", borderRadius:10, textAlign:"center" }}>
+                  <p style={{ fontSize:13, color:"#C4B5FD" }}>No additional resources were provided for this voice.</p>
+                </div>
+              )}
+            </div>}
           </div>
         </div>
 
@@ -312,12 +376,23 @@ function VoiceReveal({ profile, onSave, onRetry }) {
 
 
 // ── TYPE PICKER + OPTIONAL URL RESEARCH ──────────────────────────────────────
-function TypePicker({ onPick, onCancel }) {
-  const [step, setStep] = useState("type"); // type | url | researching
-  const [selectedType, setSelectedType] = useState(null);
-  const [url, setUrl] = useState("");
+function TypePicker({ onPick, onCancel, prefilledType = null, prefilledUrl = null }) {
+  const [step, setStep] = useState(() => {
+    if (!prefilledType) return "type";
+    if (prefilledType === "brand") return "url";
+    return "type"; // non-brand prefilled handled by useEffect below
+  });
+  const [selectedType, setSelectedType] = useState(prefilledType || null);
+  const [url, setUrl] = useState(prefilledUrl || "");
   const [error, setError] = useState("");
   const [loadingStep, setLoadingStep] = useState(0);
+
+  // Auto-skip type selection for non-brand prefilled types
+  useEffect(() => {
+    if (prefilledType && prefilledType !== "brand") {
+      onPick(prefilledType, null);
+    }
+  }, []);
 
   const LOADING_MSGS = [
     "Scanning your website...",
@@ -349,12 +424,16 @@ function TypePicker({ onPick, onCancel }) {
         [{ role: "user", content: `Research this brand: ${url.startsWith("http") ? url : "https://" + url}\nDomain: ${domain}\nSearch for: "${domain} reviews", "${domain} site:reddit.com", "${domain} vs competitors", "what is ${domain}". Then return the JSON brand intelligence report.` }],
         BRAND_RESEARCH_SYSTEM, 1500, true
       );
-      const clean = text.replace(/\`\`\`json|\`\`\`/g, "").trim();
+      // Extract JSON even if model adds text around it
+      let clean = text;
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) clean = jsonMatch[0];
+      else clean = text.replace(/```json|```/g, "").trim();
       const data = JSON.parse(clean);
       onPick(selectedType, data);
     } catch(e) {
-      setError("Research failed — " + e.message + ". Skipping to conversation.");
-      setTimeout(() => onPick(selectedType, null), 1500);
+      setStep("url");
+      setError("Research error: " + e.message);
     }
   };
 
@@ -483,7 +562,7 @@ function TypePicker({ onPick, onCancel }) {
 }
 
 // ── VOICE DISCOVERY CHAT ──────────────────────────────────────────────────────
-function VoiceDiscovery({ onVoiceSaved, onCancel, voiceType = null, brandResearch = null }) {
+function VoiceDiscovery({ onVoiceSaved, onCancel, voiceType = null, brandResearch = null, customPrompt = null }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -498,6 +577,8 @@ function VoiceDiscovery({ onVoiceSaved, onCancel, voiceType = null, brandResearc
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, loading]);
   useEffect(() => { if (started && !loading && inputRef.current) inputRef.current.focus(); }, [started, loading, messages]);
+  // Auto-start when coming from TypePicker — must be with other hooks, before any returns
+  useEffect(() => { if (voiceType && !started) { start(); } }, []);
 
   const toggleRecording = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -559,10 +640,21 @@ Use this to ask sharper, more specific questions. Reference what you found.`
     const userMsg = { role:"user", content:input.trim() };
     const newMsgs = [...messages, userMsg];
     setMessages(newMsgs); setInput(""); setLoading(true); setError("");
+
+    // Let user force voice build any time
+    const wantsVoice = /show.*(me.*)?my voice|make.*voice|build.*voice|create.*voice|i('m| am) ready|just.*build|generate.*voice/i.test(userMsg.content);
+    if (wantsVoice) { setLoading(false); analyze(newMsgs); return; }
+
     try {
-      const enrichedSystem = brandResearch
-        ? INTERVIEWER_SYSTEM + `\n\nBRAND RESEARCH CONTEXT: Category: ${brandResearch.category}. Gap: ${brandResearch.voice_gaps?.join(", ")}. Use this to ask sharper questions.`
-        : INTERVIEWER_SYSTEM;
+      const enrichedSystem = (() => {
+        let sys = INTERVIEWER_SYSTEM;
+        if (brandResearch) sys += `\n\nBRAND RESEARCH CONTEXT: Category: ${brandResearch.category}. Gap: ${brandResearch.voice_gaps?.join(", ")}. Use this to ask sharper questions.`;
+        if (customPrompt) sys += `\n\nUSER INTENT: The user typed "${customPrompt}". If this is an unusual voice type (not brand/founder/product), adapt your questions to discover what makes this voice distinctive. Keep it fun and specific.`;
+        if (voiceType === "custom" || (!["brand","founder","product"].includes(voiceType))) {
+          sys += `\n\nThis is a CUSTOM voice type. Ask what it's for, who it talks to, how it sounds, and what it would never say. Max 5 questions. Keep it light.`;
+        }
+        return sys;
+      })();
       const text = await callAPI(newMsgs, enrichedSystem);
       try {
         const clean = text.replace(/```json|```/gi,"").trim();
@@ -583,13 +675,94 @@ Use this to ask sharper, more specific questions. Reference what you found.`
         [{ role:"user", content:`Here is the voice discovery conversation:\n\n${transcript}\n\nAnalyze their voice and return only the JSON profile.` }],
         ANALYZER_SYSTEM, 1500
       );
-      const clean = text.replace(/```json|```/g,"").trim();
-      setProfile(JSON.parse(clean));
-    } catch(e) { setError("Couldn't build the profile — " + e.message); }
-    setAnalyzing(false);
+      let parsed = null;
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try { parsed = JSON.parse(jsonMatch[0]); } catch {}
+      }
+      if (!parsed) {
+        const clean = text.replace(/```json|```/g,"").trim();
+        try { parsed = JSON.parse(clean); } catch {}
+      }
+      if (!parsed) {
+        // Last resort — build a minimal profile from the conversation
+        parsed = {
+          name: "Your Voice",
+          emoji: "🚀",
+          tagline: "Voice profile generated from conversation.",
+          type: voiceType || "brand",
+          attributes: ["Authentic","Direct","Specific"],
+          vocabulary: { reach_for: [], never_use: [] },
+          sentence_style: "See system prompt for full details.",
+          signature_moves: "Based on conversation analysis.",
+          what_good_looks_like: "",
+          what_bad_looks_like: "",
+          system_prompt: text,
+        };
+      }
+      if (!parsed.name) parsed.name = "Your Voice";
+      if (!parsed.emoji) parsed.emoji = "🚀";
+      if (!parsed.system_prompt) parsed.system_prompt = text;
+      if (!parsed.attributes) parsed.attributes = [];
+      if (!parsed.vocabulary) parsed.vocabulary = { reach_for: [], never_use: [] };
+      setAnalyzing(false);
+      setProfile(parsed);
+    } catch(e) {
+      setAnalyzing(false);
+      const msg = e.message.includes("529") || e.message.includes("overloaded")
+        ? "Anthropic is overloaded right now. Wait 30 seconds and try again."
+        : "Couldn't build the profile — " + e.message;
+      setError(msg);
+    }
   };
 
+  // ALL hooks must come before any conditional returns — React rule
+  // (useEffect is already above this point in the component)
+
   if (profile) return <VoiceReveal profile={profile} onSave={v=>{onVoiceSaved(v);setProfile(null);}} onRetry={()=>{setProfile(null);setMessages([]);setStarted(false);}}/>;
+
+  // Analyzing screen — check this BEFORE error screen so it shows while building
+  if (analyzing) return (
+    <div style={{ minHeight:"100vh", background:"#FAFBFF", display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", gap:16, fontFamily:"'Poppins',sans-serif" }}>
+      <style>{`@keyframes pulse{0%,100%{opacity:0.4}50%{opacity:1}}`}</style>
+      <div style={{ fontSize:48 }}>✨</div>
+      <div style={{ fontWeight:700, fontSize:20, color:"#1A1A2E" }}>Building your voice profile...</div>
+      <div style={{ fontSize:13, color:"#9CA3AF" }}>This takes about 15 seconds</div>
+      <div style={{ display:"flex", gap:5 }}>
+        {[0,1,2].map(i=>(
+          <div key={i} style={{ width:8, height:8, borderRadius:"50%", background:"#7C5CFC",
+            animation:"pulse 1.2s ease infinite", animationDelay:`${i*0.2}s` }}/>
+        ))}
+      </div>
+    </div>
+  );
+
+  // Error screen — only show if not analyzing
+  if (error && messages.length > 0) return (
+    <div style={{ minHeight:"100vh", background:"#FAFBFF", display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", padding:40, fontFamily:"'Poppins',sans-serif", textAlign:"center" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');`}</style>
+      <div style={{ fontSize:48, marginBottom:16 }}>😬</div>
+      <div style={{ fontSize:20, fontWeight:700, color:"#1A1A2E", marginBottom:10 }}>Something went wrong</div>
+      <div style={{ fontSize:13, color:"#EF4444", fontFamily:"'JetBrains Mono',monospace",
+        background:"#FFF1F0", padding:"10px 16px", borderRadius:8, marginBottom:24,
+        maxWidth:500, lineHeight:1.6 }}>{error}</div>
+      <div style={{ display:"flex", gap:12 }}>
+        <button onClick={()=>{ setError(""); analyze(messages.filter(m=>!m.isFinal)); }}
+          style={{ padding:"12px 24px", background:"#7C5CFC", color:"white", border:"none",
+            borderRadius:10, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"'Poppins',sans-serif" }}>
+          Try again
+        </button>
+        <button onClick={()=>{ setError(""); }}
+          style={{ padding:"12px 24px", background:"transparent", color:"#9CA3AF",
+            border:"1.5px solid #E5E7EB", borderRadius:10, fontSize:14, cursor:"pointer",
+            fontFamily:"'Poppins',sans-serif" }}>
+          Back to conversation
+        </button>
+      </div>
+    </div>
+  );
 
   if (!started) return (
     <div style={{ minHeight:"100vh", background:"#FAFBFF", display:"flex", flexDirection:"column",
@@ -599,7 +772,7 @@ Use this to ask sharper, more specific questions. Reference what you found.`
         <div style={{ marginBottom:48 }}><Logo/></div>
         <div style={{ fontSize:13, fontWeight:600, color:"#7C5CFC", letterSpacing:"0.08em",
           textTransform:"uppercase", marginBottom:8 }}>Voice Discovery</div>
-        <div style={{ fontSize:10, color:"#C4B5FD", fontFamily:"monospace", marginBottom:20 }}>v2.5 · type picker + research</div>
+        <div style={{ fontSize:10, color:"#C4B5FD", fontFamily:"monospace", marginBottom:20 }}>v2.6 · error handling</div>
         <h1 style={{ fontSize:42, fontWeight:800, color:"#1A1A2E", letterSpacing:"-0.03em",
           lineHeight:1.1, marginBottom:20 }}>We find your voice.<br/><span style={{ color:"#7C5CFC" }}>You just talk.</span></h1>
         <p style={{ fontSize:16, color:"#6B7280", lineHeight:1.75, marginBottom:40, maxWidth:420, margin:"0 auto 40px" }}>
@@ -672,7 +845,11 @@ Use this to ask sharper, more specific questions. Reference what you found.`
               fontSize:15, lineHeight:1.65,
               border:m.role==="assistant"?"1px solid #EDE8FF":"none",
               boxShadow:m.role==="assistant"?"0 2px 12px rgba(124,92,252,0.06)":"none",
-              fontStyle:m.isFinal?"italic":"normal" }}>{m.content}</div>
+              fontStyle:m.isFinal?"italic":"normal" }}>{
+                m.role === "assistant"
+                  ? m.content.replace(/\*\*(.*?)\*\*/g, "$1").replace(/\*(.*?)\*/g, "$1").replace(/---+/g, "").trim()
+                  : m.content
+              }</div>
           </div>
         ))}
         {loading && <div style={{ display:"flex", marginBottom:20 }}>
@@ -838,178 +1015,533 @@ function VoiceEditor({ voice, onUpdate, onBack }) {
   );
 }
 
+
+// ── RESEARCH REPORT ───────────────────────────────────────────────────────────
+function ResearchReport({ research, onContinue }) {
+  const [expanded, setExpanded] = useState(null);
+  const [show, setShow] = useState(false);
+  useEffect(() => { setTimeout(() => setShow(true), 80); }, []);
+
+  const gradeColor = { "A+":"#10B981", A:"#10B981", B:"#7C5CFC", C:"#F59E0B", D:"#F97316", F:"#EF4444" };
+  const gc = gradeColor[research.voice_grade] || "#7C5CFC";
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#FAFBFF", fontFamily:"'Poppins',sans-serif", padding:"36px 24px" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+        @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+        .sc:hover{border-color:#DDD6FE!important;background:#F8F7FF!important}
+      `}</style>
+      <div style={{ maxWidth:660, margin:"0 auto" }}>
+
+        {/* Header */}
+        <div style={{ opacity:show?1:0, transform:show?"none":"translateY(14px)",
+          transition:"all 0.5s ease", marginBottom:28 }}>
+          <div style={{ fontSize:11, fontWeight:600, color:"#7C5CFC", letterSpacing:"0.08em",
+            textTransform:"uppercase", marginBottom:6, fontFamily:"'JetBrains Mono',monospace" }}>
+            Brand Intelligence Report
+          </div>
+          <h1 style={{ fontSize:26, fontWeight:800, color:"#1A1A2E", letterSpacing:"-0.02em", lineHeight:1.2 }}>
+            Here's what the internet thinks about <span style={{ color:"#7C5CFC" }}>{research.brand_name}</span>.
+          </h1>
+        </div>
+
+        {/* Score + what they say vs what others say */}
+        <div style={{ opacity:show?1:0, transition:"all 0.5s ease 0.1s",
+          display:"grid", gridTemplateColumns:"120px 1fr 1fr", gap:10, marginBottom:20 }}>
+          <div style={{ padding:"16px 14px", background:"white", border:"1px solid #EDE8FF",
+            borderRadius:12, textAlign:"center" }}>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, letterSpacing:"0.1em",
+              textTransform:"uppercase", color:"#9CA3AF", marginBottom:4 }}>Voice Score</div>
+            <div style={{ fontSize:38, fontWeight:800, color:gc, lineHeight:1 }}>{research.voice_grade}</div>
+            <div style={{ fontSize:10, color:"#9CA3AF", fontFamily:"'JetBrains Mono',monospace" }}>{research.voice_score}/100</div>
+            <div style={{ height:3, background:"#F0EEFF", borderRadius:2, marginTop:8 }}>
+              <div style={{ height:"100%", width:`${research.voice_score}%`, background:gc, borderRadius:2, transition:"width 1s ease 0.5s" }}/>
+            </div>
+          </div>
+          <div style={{ padding:"14px 16px", background:"white", border:"1px solid #EDE8FF", borderRadius:12 }}>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, letterSpacing:"0.1em",
+              textTransform:"uppercase", color:"#9CA3AF", marginBottom:6 }}>What you say</div>
+            <p style={{ fontSize:12, color:"#6B7280", lineHeight:1.6, fontStyle:"italic" }}>"{research.what_they_say}"</p>
+          </div>
+          <div style={{ padding:"14px 16px", background:"#F0EBFF", border:"1px solid #DDD6FE", borderRadius:12 }}>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, letterSpacing:"0.1em",
+              textTransform:"uppercase", color:"#7C5CFC", marginBottom:6, opacity:0.8 }}>What internet says</div>
+            <p style={{ fontSize:12, color:"#4C1D95", lineHeight:1.6, fontStyle:"italic" }}>"{research.what_others_say}"</p>
+          </div>
+        </div>
+
+        {/* Surprises */}
+        {research.surprises?.length > 0 && (
+          <div style={{ opacity:show?1:0, transition:"all 0.5s ease 0.15s", marginBottom:20 }}>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, letterSpacing:"0.1em",
+              textTransform:"uppercase", color:"#9CA3AF", marginBottom:10 }}>Surprising Findings</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              {research.surprises.map((s, i) => (
+                <div key={i} className="sc" onClick={() => setExpanded(expanded===i?null:i)}
+                  style={{ padding:"12px 16px", background:"white", border:"1px solid #EDE8FF",
+                    borderRadius:10, cursor:"pointer", transition:"all 0.15s" }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <span style={{ fontSize:18 }}>{s.icon}</span>
+                      <span style={{ fontWeight:600, fontSize:13, color:"#1A1A2E" }}>{s.title}</span>
+                    </div>
+                    <span style={{ color:"#C4B5FD", fontSize:10 }}>{expanded===i?"▲":"▼"}</span>
+                  </div>
+                  {expanded===i && (
+                    <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid #F0EEFF" }}>
+                      <p style={{ fontSize:13, color:"#6B7280", lineHeight:1.65, marginBottom:8 }}>{s.insight}</p>
+                      <div style={{ padding:"7px 10px", background:"#F0EBFF", borderRadius:7,
+                        fontSize:12, color:"#7C5CFC" }}>→ {s.opportunity}</div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Vocabulary */}
+        {research.vocabulary && (
+          <div style={{ opacity:show?1:0, transition:"all 0.5s ease 0.2s",
+            display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:20 }}>
+            {[
+              { label:"You Own", words:research.vocabulary.they_own, color:"#10B981", bg:"#F0FDF4", border:"#BBF7D0" },
+              { label:"Competitors Own", words:research.vocabulary.competitors_own, color:"#EF4444", bg:"#FFF1F0", border:"#FFCCC7" },
+              { label:"Customers Say", words:research.vocabulary.customers_use, color:"#7C5CFC", bg:"#F0EBFF", border:"#DDD6FE" },
+            ].map(({ label, words, color, bg, border }) => (
+              <div key={label} style={{ padding:"12px 14px", background:bg, border:`1px solid ${border}`, borderRadius:10 }}>
+                <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, letterSpacing:"0.1em",
+                  textTransform:"uppercase", color, marginBottom:8, opacity:0.8 }}>{label}</div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                  {(words||[]).map((w,i) => (
+                    <span key={i} style={{ padding:"2px 7px", background:"rgba(255,255,255,0.7)",
+                      borderRadius:4, fontSize:11, color:"#374151", fontFamily:"'JetBrains Mono',monospace" }}>{w}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Voice gaps */}
+        {research.voice_gaps?.length > 0 && (
+          <div style={{ opacity:show?1:0, transition:"all 0.5s ease 0.25s",
+            marginBottom:28, padding:"16px 18px", background:"white",
+            border:"1px solid #EDE8FF", borderRadius:12 }}>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, letterSpacing:"0.1em",
+              textTransform:"uppercase", color:"#9CA3AF", marginBottom:10 }}>Voice Gaps to Close</div>
+            {research.voice_gaps.map((g, i) => (
+              <div key={i} style={{ display:"flex", gap:8, marginBottom:6 }}>
+                <div style={{ width:16, height:16, borderRadius:"50%", background:"#F0EBFF",
+                  display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
+                  fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:"#7C5CFC", marginTop:2 }}>{i+1}</div>
+                <p style={{ fontSize:13, color:"#6B7280", lineHeight:1.55 }}>{g}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* CTA */}
+        <div style={{ opacity:show?1:0, transition:"all 0.5s ease 0.3s" }}>
+          <button onClick={onContinue}
+            style={{ padding:"14px 32px", background:"#7C5CFC", color:"white", border:"none",
+              borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer",
+              fontFamily:"'Poppins',sans-serif", boxShadow:"0 4px 20px rgba(124,92,252,0.25)" }}>
+            Now let's build your voice →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ── RESOURCE UPLOAD ───────────────────────────────────────────────────────────
+function ResourceUpload({ research, onContinue, onSkip }) {
+  const [resources, setResources] = useState([]);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [error, setError] = useState("");
+  const idRef = useRef(1);
+
+  const TYPES = [
+    { type: "link", icon: "🔗", label: "Link / URL", placeholder: "https://your-deck.com or any link" },
+    { type: "pitch_deck", icon: "📊", label: "Pitch Deck", placeholder: "Paste key slides or content from your deck" },
+    { type: "case_study", icon: "📋", label: "Case Study", placeholder: "Paste case study text" },
+    { type: "sales_script", icon: "💬", label: "Sales Script", placeholder: "Paste your sales talk track or email" },
+    { type: "customer_words", icon: "💛", label: "Customer Words", placeholder: "Paste reviews, testimonials, or customer emails" },
+    { type: "one_pager", icon: "📄", label: "One-Pager", placeholder: "Paste your product one-pager or fact sheet" },
+  ];
+
+  const addType = (type) => setResources(r => [...r, { id: idRef.current++, type, value: "" }]);
+  const update = (id, value) => setResources(r => r.map(x => x.id === id ? { ...x, value } : x));
+  const remove = (id) => setResources(r => r.filter(x => x.id !== id));
+
+  const handleAnalyze = async () => {
+    const filled = resources.filter(r => r.value.trim());
+    if (!filled.length) { onSkip(); return; }
+    setAnalyzing(true); setError("");
+    try {
+      const resourceText = filled.map(r => `[${r.type.toUpperCase()}]\n${r.value}`).join("\n\n---\n\n");
+      const system = `You are analyzing brand resources to extract voice profile data for ${research?.brand_name || "this brand"}.
+
+Extract any useful voice signals from these resources:
+- pov: controversial belief about the category
+- differentiation: what makes this genuinely different  
+- primary_fear: what the buyer is actually afraid of
+- anti_audience: who this is NOT for
+- objections: surface + real versions
+- what_it_does_not_do: explicit non-features
+- proof_stats: any statistics or metrics
+- named_customers: customer names or case studies
+- customer_language: exact phrases customers use
+- banned_words: words that should never appear
+
+Return ONLY valid JSON: {"fields_found":{"field":"value"},"key_findings":["most important finding","second finding","third finding"],"resources_summary":"2 sentences on what was provided"}`;
+
+      const text = await callAPI(
+        [{ role:"user", content: `Analyze these resources for ${research?.brand_name}:\n\n${resourceText}` }],
+        system, 1000
+      );
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { fields_found: {}, key_findings: [], resources_summary: "Resources analyzed." };
+      onContinue({ ...parsed, raw: resourceText, items: filled });
+    } catch(e) {
+      setError(e.message);
+      setAnalyzing(false);
+    }
+  };
+
+  if (analyzing) return (
+    <div style={{ minHeight:"100vh", background:"#FAFBFF", display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", gap:16, fontFamily:"'Poppins',sans-serif" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+        @keyframes pulse{0%,100%{opacity:0.4}50%{opacity:1}}`}</style>
+      <div style={{ fontSize:44 }}>📖</div>
+      <div style={{ fontWeight:700, fontSize:18, color:"#1A1A2E" }}>Reading your resources...</div>
+      <div style={{ fontSize:13, color:"#9CA3AF" }}>Mapping to voice fields</div>
+      <div style={{ display:"flex", gap:5 }}>
+        {[0,1,2].map(i => <div key={i} style={{ width:8, height:8, borderRadius:"50%", background:"#7C5CFC", animation:"pulse 1.2s ease infinite", animationDelay:`${i*0.2}s` }}/>)}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#FAFBFF", fontFamily:"'Poppins',sans-serif", padding:"40px 24px" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+        .res-input{width:100%;padding:10px 14px;background:white;border:1.5px solid #EDE8FF;border-radius:10px;font-family:'Poppins',sans-serif;font-size:13px;color:#1A1A2E;outline:none;resize:vertical;min-height:72px;transition:border-color 0.2s}
+        .res-input:focus{border-color:#7C5CFC!important}
+        .res-input::placeholder{color:#C4B5FD}
+        .type-btn:hover{border-color:#7C5CFC!important;color:#7C5CFC!important}
+        .analyze-btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(124,92,252,0.3)!important}
+      `}</style>
+      <div style={{ maxWidth:640, margin:"0 auto" }}>
+        <div style={{ marginBottom:28 }}>
+          <div style={{ fontSize:11, fontWeight:600, color:"#7C5CFC", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8, fontFamily:"'JetBrains Mono',monospace" }}>Step 3 of 4</div>
+          <h2 style={{ fontSize:26, fontWeight:800, color:"#1A1A2E", letterSpacing:"-0.02em", marginBottom:10 }}>Add your resources.</h2>
+          <p style={{ fontSize:14, color:"#9CA3AF", lineHeight:1.7, maxWidth:480 }}>
+            Every resource means fewer questions. Pitch decks, case studies, sales scripts, customer emails — paste links or text. Skip anything you don't have.
+          </p>
+        </div>
+
+        {/* Add type buttons */}
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:20 }}>
+          {TYPES.map(({ type, icon, label }) => (
+            <button key={type} className="type-btn" onClick={() => addType(type)}
+              style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 14px", background:"white", border:"1.5px solid #EDE8FF", borderRadius:100, fontSize:12, color:"#9CA3AF", cursor:"pointer", fontFamily:"'Poppins',sans-serif", transition:"all 0.15s", fontWeight:500 }}>
+              {icon} + {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Resource inputs */}
+        {resources.length > 0 && (
+          <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:20 }}>
+            {resources.map(res => {
+              const meta = TYPES.find(t => t.type === res.type) || TYPES[0];
+              return (
+                <div key={res.id} style={{ padding:"16px 18px", background:"white", border:"1.5px solid #EDE8FF", borderRadius:14 }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <span style={{ fontSize:18 }}>{meta.icon}</span>
+                      <span style={{ fontWeight:600, fontSize:14, color:"#1A1A2E" }}>{meta.label}</span>
+                    </div>
+                    <button onClick={() => remove(res.id)} style={{ background:"none", border:"none", color:"#C4B5FD", cursor:"pointer", fontSize:18, lineHeight:1, padding:"0 4px" }}>×</button>
+                  </div>
+                  <textarea className="res-input" value={res.value} onChange={e => update(res.id, e.target.value)} placeholder={meta.placeholder}/>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {resources.length === 0 && (
+          <div style={{ padding:"24px", background:"white", border:"1.5px dashed #EDE8FF", borderRadius:14, textAlign:"center", marginBottom:20 }}>
+            <p style={{ fontSize:13, color:"#C4B5FD", marginBottom:0 }}>No resources added yet — click a button above to add one, or skip to the conversation.</p>
+          </div>
+        )}
+
+        {error && <div style={{ marginBottom:14, padding:"10px 14px", background:"#FFF1F0", border:"1px solid #FFCCC7", borderRadius:8, fontSize:12, color:"#EF4444", fontFamily:"'JetBrains Mono',monospace" }}>{error.slice(0,120)}</div>}
+
+        <div style={{ display:"flex", gap:12 }}>
+          <button className="analyze-btn" onClick={handleAnalyze}
+            style={{ padding:"13px 28px", background:"#7C5CFC", color:"white", border:"none", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"'Poppins',sans-serif", transition:"all 0.2s", boxShadow:"0 4px 16px rgba(124,92,252,0.25)" }}>
+            {resources.some(r => r.value.trim()) ? "Analyze resources →" : "Skip — start conversation →"}
+          </button>
+          <button onClick={onSkip}
+            style={{ padding:"13px 20px", background:"transparent", color:"#9CA3AF", border:"1.5px solid #E5E7EB", borderRadius:12, fontSize:14, cursor:"pointer", fontFamily:"'Poppins',sans-serif" }}>
+            Skip for now
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function Dashboard({ voices, onNew, onSelect, onDelete, onScore, scoreHistory }) {
-  const [activeTab, setActiveTab] = useState("voices");
+function Dashboard({ voices, onPrompt, onSelect, onDelete, onScore, scoreHistory = [] }) {
+  const [input, setInput] = useState("");
+  const inputRef = useRef();
+
+  const CHIPS = [
+    { label: "Brand Voice", prompt: "Create a brand voice for " },
+    { label: "Personal Voice", prompt: "Create a personal voice for " },
+    { label: "Product Voice", prompt: "Create a product voice for " },
+  ];
+
+  const handleChip = (prompt) => {
+    setInput(prompt);
+    inputRef.current?.focus();
+  };
+
+  const handleSubmit = () => {
+    if (!input.trim()) return;
+    onPrompt(input.trim());
+  };
+
   const grouped = {
     founder: voices.filter(v=>v.type==="founder"),
     brand:   voices.filter(v=>v.type==="brand"),
     product: voices.filter(v=>v.type==="product"),
+    other:   voices.filter(v=>!["founder","brand","product"].includes(v.type)),
   };
 
   return (
     <div style={{ minHeight:"100vh", background:"#FAFBFF", fontFamily:"'Poppins',sans-serif" }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
-        .dash-tab:hover{color:#7C5CFC!important}
+        .chip:hover{background:#EDE8FF!important;border-color:#C4B5FD!important;color:#7C5CFC!important}
+        .send-btn:hover{background:#6B4EE0!important;transform:translateY(-1px)}
+        .send-btn:disabled{background:#E5E7EB!important;color:#9CA3AF!important;transform:none!important;cursor:not-allowed!important}
+        .voice-card:hover{box-shadow:0 8px 32px rgba(124,92,252,0.12)!important;border-color:#C4B5FD!important}
+        .prompt-input:focus{border-color:#7C5CFC!important;box-shadow:0 0 0 3px rgba(124,92,252,0.1)!important}
       `}</style>
 
       {/* Header */}
-      <div style={{ padding:"16px 32px", borderBottom:"1px solid #EDE8FF", background:"white",
+      <div style={{ padding:"18px 32px", borderBottom:"1px solid #EDE8FF", background:"white",
         display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <Logo/>
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={onScore} style={{ padding:"10px 20px", background:"#F0EBFF", color:"#7C5CFC",
-            border:"none", borderRadius:10, fontSize:13, fontWeight:600, cursor:"pointer",
-            fontFamily:"'Poppins',sans-serif", display:"flex", alignItems:"center", gap:6 }}>
-            🎯 Boom Score
-          </button>
-          <button onClick={onNew} style={{ padding:"10px 20px", background:"#7C5CFC", color:"white",
-            border:"none", borderRadius:10, fontSize:13, fontWeight:600, cursor:"pointer",
-            fontFamily:"'Poppins',sans-serif", boxShadow:"0 4px 16px rgba(124,92,252,0.3)" }}>
-            + New voice
-          </button>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          {onScore && (
+            <button onClick={onScore}
+              style={{ padding:"9px 18px", background:"#F0EBFF", color:"#7C5CFC",
+                border:"1.5px solid #DDD6FE", borderRadius:10, fontSize:13, fontWeight:600,
+                cursor:"pointer", fontFamily:"'Poppins',sans-serif", transition:"all 0.15s" }}>
+              📊 BoomScore
+            </button>
+          )}
+          <div style={{ fontSize:11, color:"#C4B5FD", fontFamily:"'JetBrains Mono',monospace" }}>
+            {voices.length} voice{voices.length !== 1 ? "s" : ""}
+          </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ borderBottom:"1px solid #EDE8FF", background:"white", padding:"0 32px", display:"flex", gap:0 }}>
-        {[
-          { id:"voices", label:`Voices (${voices.length})` },
-          { id:"scores", label:`Score history (${scoreHistory.length})` },
-        ].map(t => (
-          <button key={t.id} className="dash-tab" onClick={()=>setActiveTab(t.id)}
-            style={{ padding:"12px 16px", border:"none", background:"transparent",
-              fontFamily:"'Poppins',sans-serif", fontSize:13, fontWeight:600,
-              cursor:"pointer", color:activeTab===t.id?"#7C5CFC":"#9CA3AF",
-              borderBottom:`2.5px solid ${activeTab===t.id?"#7C5CFC":"transparent"}`,
-              transition:"all 0.15s" }}>{t.label}</button>
-        ))}
-      </div>
+      <div style={{ maxWidth:760, margin:"0 auto", padding:"48px 32px 32px" }}>
 
-      <div style={{ maxWidth:880, margin:"0 auto", padding:"32px 32px" }}>
+        {/* Chat prompt box */}
+        <div style={{ marginBottom: 40 }}>
+          <h2 style={{ fontSize:22, fontWeight:800, color:"#1A1A2E", letterSpacing:"-0.02em",
+            marginBottom:20, textAlign:"center" }}>
+            {voices.length === 0 ? "What voice do you want to create?" : "Create a new voice"}
+          </h2>
 
-        {/* Score history tab */}
-        {activeTab === "scores" && (
-          <div>
-            {scoreHistory.length === 0 ? (
-              <div style={{ textAlign:"center", padding:"60px 40px" }}>
-                <div style={{ fontSize:48, marginBottom:16 }}>🎯</div>
-                <div style={{ fontSize:20, fontWeight:700, color:"#1A1A2E", marginBottom:8 }}>No scores yet</div>
-                <div style={{ fontSize:14, color:"#9CA3AF", marginBottom:24 }}>
-                  Score any URL or content to see how strong the brand voice is.
-                </div>
-                <button onClick={onScore} style={{ padding:"12px 28px", background:"#7C5CFC", color:"white",
-                  border:"none", borderRadius:10, fontSize:14, fontWeight:600, cursor:"pointer",
-                  fontFamily:"'Poppins',sans-serif" }}>
-                  Score something →
-                </button>
-              </div>
-            ) : (
-              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-                  <div style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace", color:"#9CA3AF",
-                    textTransform:"uppercase", letterSpacing:"0.08em" }}>Recent scores</div>
-                  <button onClick={onScore} style={{ padding:"8px 16px", background:"#7C5CFC", color:"white",
-                    border:"none", borderRadius:8, fontSize:12, fontWeight:600, cursor:"pointer",
-                    fontFamily:"'Poppins',sans-serif" }}>+ New score</button>
-                </div>
-                {scoreHistory.map((entry, i) => (
-                  <ScoreHistoryCard key={i} entry={entry} onView={() => {}} />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Voices tab */}
-        {activeTab === "voices" && (
-        <>
-        {voices.length === 0 ? (
-          <div style={{ textAlign:"center", padding:"80px 40px" }}>
-            <div style={{ fontSize:56, marginBottom:20 }}>🚀</div>
-            <div style={{ fontFamily:"'Poppins',sans-serif", fontSize:28, fontWeight:800,
-              color:"#1A1A2E", marginBottom:12, letterSpacing:"-0.02em" }}>No voices yet</div>
-            <div style={{ fontSize:15, color:"#9CA3AF", marginBottom:32, lineHeight:1.7 }}>
-              Discover your first voice — just have a conversation.
-            </div>
-            <button onClick={onNew} style={{ padding:"14px 36px", background:"#7C5CFC", color:"white",
-              border:"none", borderRadius:12, fontSize:16, fontWeight:700, cursor:"pointer",
-              fontFamily:"'Poppins',sans-serif", boxShadow:"0 4px 20px rgba(124,92,252,0.3)" }}>
-              Discover my voice →
+          {/* Input box */}
+          <div style={{ background:"white", border:"1.5px solid #EDE8FF", borderRadius:16,
+            padding:"4px 4px 4px 18px", display:"flex", alignItems:"center", gap:8,
+            boxShadow:"0 4px 24px rgba(124,92,252,0.08)", transition:"all 0.2s" }}>
+            <input
+              ref={inputRef}
+              className="prompt-input"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleSubmit()}
+              placeholder="Create a brand voice for Notion… or anything you want"
+              style={{ flex:1, border:"none", outline:"none", fontSize:15,
+                color:"#1A1A2E", fontFamily:"'Poppins',sans-serif",
+                background:"transparent", padding:"10px 0" }}
+            />
+            <button className="send-btn" onClick={handleSubmit} disabled={!input.trim()}
+              style={{ padding:"10px 20px", background:"#7C5CFC", color:"white",
+                border:"none", borderRadius:12, fontSize:14, fontWeight:700,
+                cursor:"pointer", fontFamily:"'Poppins',sans-serif",
+                transition:"all 0.15s", whiteSpace:"nowrap",
+                boxShadow:"0 2px 10px rgba(124,92,252,0.3)" }}>
+              Create →
             </button>
           </div>
-        ) : (
-          Object.entries(grouped).map(([type, list]) => list.length > 0 && (
-            <div key={type} style={{ marginBottom:40 }}>
-              <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase",
-                color:"#9CA3AF", marginBottom:16, fontFamily:"'JetBrains Mono',monospace",
-                display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ width:6, height:6, borderRadius:"50%", background:TYPE_META[type]?.color, display:"inline-block" }}/>
-                {TYPE_META[type]?.label}s
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(260px, 1fr))", gap:16 }}>
-                {list.map(v => (
-                  <div key={v.id} style={{ background:"white", border:"1px solid #EDE8FF", borderRadius:16,
-                    padding:20, cursor:"pointer", transition:"all 0.2s",
-                    boxShadow:"0 2px 8px rgba(124,92,252,0.04)" }}
-                    onClick={()=>onSelect(v)}
-                    onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 8px 32px rgba(124,92,252,0.12)";e.currentTarget.style.borderColor="#C4B5FD";}}
-                    onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 2px 8px rgba(124,92,252,0.04)";e.currentTarget.style.borderColor="#EDE8FF";}}>
-                    <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:12 }}>
-                      <VoiceAvatar voice={v} size={44}/>
-                      <button onClick={e=>{e.stopPropagation();if(window.confirm(`Delete "${v.name}"?`))onDelete(v.id)}}
-                        style={{ background:"none", border:"none", fontSize:16, cursor:"pointer",
-                          color:"#D1D5DB", padding:4, lineHeight:1 }}
-                        onMouseEnter={e=>e.target.style.color="#EF4444"}
-                        onMouseLeave={e=>e.target.style.color="#D1D5DB"}>🗑</button>
-                    </div>
-                    <div style={{ fontWeight:700, fontSize:15, color:"#1A1A2E", marginBottom:4,
-                      letterSpacing:"-0.01em" }}>{v.name}</div>
-                    {v.tagline && <div style={{ fontSize:12, color:"#9CA3AF", lineHeight:1.5,
-                      fontStyle:"italic", marginBottom:10 }}>"{v.tagline}"</div>}
-                    {v.attributes?.length > 0 && (
-                      <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:8 }}>
-                        {v.attributes.slice(0,3).map((a,i)=>(
-                          <span key={i} style={{ padding:"3px 10px", background:TYPE_META[v.type]?.bg,
-                            color:TYPE_META[v.type]?.color, borderRadius:100, fontSize:11, fontWeight:500 }}>{a}</span>
-                        ))}
-                        {v.attributes.length > 3 && <span style={{ padding:"3px 10px", background:"#F5F5F5",
-                          color:"#9CA3AF", borderRadius:100, fontSize:11 }}>+{v.attributes.length-3}</span>}
-                      </div>
-                    )}
-                    <div style={{ marginTop:12, paddingTop:12, borderTop:"1px solid #F0EEFF",
-                      fontSize:11, color:"#C4B5FD", fontFamily:"'JetBrains Mono',monospace" }}>
-                      Updated {v.updatedAt?.slice(0,10) || "today"}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))
-        )}
-        </>
-        )}
 
+          {/* Chips */}
+          <div style={{ display:"flex", gap:8, justifyContent:"center", marginTop:14, flexWrap:"wrap" }}>
+            {CHIPS.map(({ label, prompt }) => (
+              <button key={label} className="chip" onClick={() => handleChip(prompt)}
+                style={{ padding:"7px 16px", background:"white",
+                  border:"1.5px solid #EDE8FF", borderRadius:100, fontSize:13,
+                  color:"#9CA3AF", cursor:"pointer", fontFamily:"'Poppins',sans-serif",
+                  fontWeight:500, transition:"all 0.15s" }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {voices.length === 0 && (
+            <p style={{ textAlign:"center", fontSize:13, color:"#C4B5FD",
+              marginTop:16, fontFamily:"'JetBrains Mono',monospace" }}>
+              Try: "Create a voice for my dog's Instagram" ← we'll figure it out
+            </p>
+          )}
+        </div>
+
+        {/* Saved voices */}
+        {voices.length > 0 && (
+          <div>
+            <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.1em",
+              textTransform:"uppercase", color:"#C4B5FD", marginBottom:20,
+              fontFamily:"'JetBrains Mono',monospace", textAlign:"center" }}>
+              Your voices
+            </div>
+            {Object.entries(grouped).map(([type, list]) => list.length > 0 && (
+              <div key={type} style={{ marginBottom:32 }}>
+                <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.1em",
+                  textTransform:"uppercase", color:"#9CA3AF", marginBottom:12,
+                  fontFamily:"'JetBrains Mono',monospace", display:"flex",
+                  alignItems:"center", gap:8 }}>
+                  <span style={{ width:6, height:6, borderRadius:"50%",
+                    background: type === "other" ? "#9CA3AF" : TYPE_META[type]?.color,
+                    display:"inline-block" }}/>
+                  {type === "other" ? "Other" : TYPE_META[type]?.label + "s"}
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(240px, 1fr))", gap:14 }}>
+                  {list.map(v => (
+                    <div key={v.id} className="voice-card"
+                      style={{ background:"white", border:"1px solid #EDE8FF", borderRadius:14,
+                        padding:18, cursor:"pointer", transition:"all 0.2s",
+                        boxShadow:"0 2px 8px rgba(124,92,252,0.04)" }}
+                      onClick={()=>onSelect(v)}>
+                      <div style={{ display:"flex", alignItems:"flex-start",
+                        justifyContent:"space-between", marginBottom:10 }}>
+                        <VoiceAvatar voice={v} size={40}/>
+                        <button onClick={e=>{e.stopPropagation();if(window.confirm(`Delete "${v.name}"?`))onDelete(v.id)}}
+                          style={{ background:"none", border:"none", fontSize:15,
+                            cursor:"pointer", color:"#D1D5DB", padding:4, lineHeight:1 }}
+                          onMouseEnter={e=>e.target.style.color="#EF4444"}
+                          onMouseLeave={e=>e.target.style.color="#D1D5DB"}>🗑</button>
+                      </div>
+                      <div style={{ fontWeight:700, fontSize:14, color:"#1A1A2E",
+                        marginBottom:4, letterSpacing:"-0.01em" }}>{v.name}</div>
+                      {v.tagline && <div style={{ fontSize:12, color:"#9CA3AF", lineHeight:1.5,
+                        fontStyle:"italic", marginBottom:8 }}>"{v.tagline}"</div>}
+                      {v.attributes?.length > 0 && (
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:6 }}>
+                          {v.attributes.slice(0,3).map((a,i)=>(
+                            <span key={i} style={{ padding:"2px 8px",
+                              background: type === "other" ? "#F5F5F5" : TYPE_META[v.type]?.bg,
+                              color: type === "other" ? "#9CA3AF" : TYPE_META[v.type]?.color,
+                              borderRadius:100, fontSize:11, fontWeight:500 }}>{a}</span>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid #F0EEFF",
+                        fontSize:10, color:"#C4B5FD", fontFamily:"'JetBrains Mono',monospace" }}>
+                        {v.updatedAt?.slice(0,10) || "today"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // ── APP ROOT ──────────────────────────────────────────────────────────────────
+function ErrorFallback({ error, onReset }) {
+  return (
+    <div style={{ minHeight:"100vh", background:"#FAFBFF", display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", padding:40, fontFamily:"'Poppins',sans-serif", textAlign:"center" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');`}</style>
+      <div style={{ fontSize:48, marginBottom:16 }}>💥</div>
+      <div style={{ fontSize:22, fontWeight:700, color:"#1A1A2E", marginBottom:10 }}>Something crashed</div>
+      <div style={{ fontSize:12, color:"#EF4444", fontFamily:"'JetBrains Mono',monospace",
+        background:"#FFF1F0", padding:"10px 16px", borderRadius:8, marginBottom:24,
+        maxWidth:480, lineHeight:1.6 }}>{error?.message || "Unknown error"}</div>
+      <button onClick={onReset} style={{ padding:"12px 28px", background:"#7C5CFC", color:"white",
+        border:"none", borderRadius:10, fontSize:14, fontWeight:600, cursor:"pointer",
+        fontFamily:"'Poppins',sans-serif" }}>← Start over</button>
+    </div>
+  );
+}
+
 export default function App() {
   const [voices, setVoices] = useState(() => loadVoices());
   const [view, setView] = useState("dashboard");
   const [editing, setEditing] = useState(null);
   const [pickedType, setPickedType] = useState(null);
   const [research, setResearch] = useState(null);
-
-  // ── Boom Score state ──────────────────────────────────────────────────────
+  const [resourceData, setResourceData] = useState(null);
+  const [customPrompt, setCustomPrompt] = useState(null);
+  const [prefilledUrl, setPrefilledUrl] = useState(null);
+  // ── BoomScore state ──────────────────────────────────────────────────────
   const [scoreHistory, setScoreHistory] = useState(() => loadScoreHistory());
   const [scoreInputMeta, setScoreInputMeta] = useState(null);
   const [scoreResult, setScoreResult] = useState(null);
   const [scoreLoadingMeta, setScoreLoadingMeta] = useState(null);
 
   const persist = (v) => { setVoices(v); saveVoices(v); };
+
+  const handlePrompt = (prompt) => {
+    const lower = prompt.toLowerCase();
+    // Classify intent
+    let type = null;
+    let url = null;
+
+    if (/brand voice|company voice|business voice/.test(lower)) type = "brand";
+    else if (/personal voice|founder voice|my voice|voice for me/.test(lower)) type = "founder";
+    else if (/product voice|feature voice|app voice|tool voice/.test(lower)) type = "product";
+    else type = "custom"; // dog voice, cat voice, anything else
+
+    // Try to extract a URL or name from the prompt
+    const urlMatch = prompt.match(/https?:\/\/\S+/);
+    const domainMatch = prompt.match(/\b([a-z0-9-]+\.(com|io|ai|co|org|net))\b/i);
+    if (urlMatch) url = urlMatch[0];
+    else if (domainMatch) url = domainMatch[0];
+
+    setPickedType(type);
+    setCustomPrompt(prompt);
+    setResearch(null);
+    setResourceData(null);
+
+    if (type === "brand" && url) {
+      // Go straight to research with URL pre-filled
+      setPrefilledUrl(url);
+      setView("discover");
+    } else if (type === "custom") {
+      // Skip type picker, go to custom conversation
+      setView("chat");
+    } else {
+      setView("discover");
+    }
+  };
 
   const handleSaved = (profile) => {
     const voice = {
@@ -1025,10 +1557,15 @@ export default function App() {
       what_good_looks_like: profile.what_good_looks_like || "",
       what_bad_looks_like: profile.what_bad_looks_like || "",
       system_prompt: profile.system_prompt || "",
+      // Store research + resources for holistic view
+      _research: research || null,
+      _resources: resourceData || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     persist([...voices, voice]);
+    setResearch(null);
+    setResourceData(null);
     setView("dashboard");
   };
 
@@ -1042,12 +1579,11 @@ export default function App() {
     persist(voices.filter(v => v.id !== id));
   };
 
-  // ── Boom Score handlers ───────────────────────────────────────────────────
+  // ── BoomScore handler ────────────────────────────────────────────────────
   const handleScore = async (inputMeta) => {
     setScoreInputMeta(inputMeta);
     setScoreLoadingMeta({ mode: inputMeta.mode, url: inputMeta.url });
     setView("score-loading");
-
     try {
       const res = await fetch("/api/score", {
         method: "POST",
@@ -1055,10 +1591,7 @@ export default function App() {
         body: JSON.stringify(inputMeta),
       });
       const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || "Scoring failed");
-      }
-      // Save to history
+      if (!res.ok || data.error) throw new Error(data.error || "Scoring failed");
       const next = [data, ...scoreHistory];
       setScoreHistory(next);
       saveScoreHistory(next);
@@ -1066,13 +1599,13 @@ export default function App() {
       setView("score-results");
     } catch (e) {
       setView("score-entry");
-      throw e;
     }
   };
 
-  // ── Routing ───────────────────────────────────────────────────────────────
-  if (view === "discover") return <TypePicker onPick={(type, research) => { setPickedType(type); setResearch(research); setView("chat"); }} onCancel={()=>setView("dashboard")}/>;
-  if (view === "chat") return <VoiceDiscovery onVoiceSaved={handleSaved} onCancel={()=>setView("dashboard")} voiceType={pickedType} brandResearch={research}/>;
+  if (view === "discover") return <TypePicker onPick={(type, res) => { setPickedType(type); setResearch(res); setView(res ? "report" : "chat"); }} onCancel={()=>setView("dashboard")} prefilledType={pickedType} prefilledUrl={prefilledUrl} onClearPrefill={()=>setPrefilledUrl(null)}/>;
+  if (view === "report" && research) return <ResearchReport research={research} onContinue={()=>setView(pickedType==="brand" ? "resources" : "chat")}/>;
+  if (view === "resources") return <ResourceUpload research={research} onContinue={(data)=>{ setResourceData(data); setView("chat"); }} onSkip={()=>setView("chat")}/>;
+  if (view === "chat") return <VoiceDiscovery onVoiceSaved={handleSaved} onCancel={()=>setView("dashboard")} voiceType={pickedType} brandResearch={research} resourceData={resourceData} customPrompt={customPrompt}/>;
   if (view === "editor" && editing) return <VoiceEditor voice={editing} onUpdate={handleUpdate} onBack={()=>setView("dashboard")}/>;
 
   if (view === "score-entry") return (
@@ -1082,14 +1615,12 @@ export default function App() {
       onCancel={() => setView("dashboard")}
     />
   );
-
   if (view === "score-loading") return (
     <BoomScoreLoading
       mode={scoreLoadingMeta?.mode}
       url={scoreLoadingMeta?.url}
     />
   );
-
   if (view === "score-results" && scoreResult) return (
     <BoomScoreResults
       result={scoreResult}
@@ -1100,14 +1631,5 @@ export default function App() {
     />
   );
 
-  return (
-    <Dashboard
-      voices={voices}
-      onNew={() => setView("discover")}
-      onSelect={v => { setEditing(v); setView("editor"); }}
-      onDelete={handleDelete}
-      onScore={() => setView("score-entry")}
-      scoreHistory={scoreHistory}
-    />
-  );
+  return <Dashboard voices={voices} onPrompt={handlePrompt} onSelect={v=>{setEditing(v);setView("editor")}} onDelete={handleDelete} onScore={() => setView("score-entry")} scoreHistory={scoreHistory}/>;
 }
